@@ -30,7 +30,7 @@ Output per chunk:
 import os
 import hashlib
 from typing import Generator
-import fitz  # PyMuPDF — imported as fitz for historical reasons
+import pymupdf as fitz  # PyMuPDF — imported as fitz for historical reasons
 
 
 def compute_file_hash(pdf_path: str) -> str:
