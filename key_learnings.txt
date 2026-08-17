@@ -1,0 +1,40 @@
+./src/chunker.py
+
+1. It chunks up all of the pdf documents provided in the ./data directory. One chunk is 500 word long and there is an overlap of 100 words in every adjacent chunk. Last 100 words of chunk[i] == First 100 words of chunk[i+1]
+2. Chunks are made in a dictionary format with added metadata: 
+		{
+                "text":        chunk_text,
+                "source":      filename,
+                "page":        page_data["page"],
+                "chunk_index": chunk_index,
+                "file_hash":   file_hash
+            }
+3. The chunks are returned in yield fashion, ie it generates chunks for each document one by one as the generator is called.
+4. For eg. in the main block, the generator called like:
+if __name__ == "__main__":
+    print("Running chunker test...\n")
+
+    for filename, chunks in chunk_all_documents("./data"):
+        print(f"  First chunk preview:")
+        print(f"  Source:  {chunks[0]['source']}")
+        print(f"  Page:    {chunks[0]['page']}")
+        print(f"  Hash:    {chunks[0]['file_hash']}")
+        print(f"  Text:    {chunks[0]['text'][:200]}...")
+        print()
+so when the for loop progresses, it provides the chunks of the next file. It is like pause and play: Return chunks for one file; pause till called again in the main for loop; return the next file's chunk
+
+.src/embedder.py
+
+1. Embeds the chunks it receives from the chunker.py. 
+2. Each chunk is embedded into one singular vector. Eg: One document: 50 chunks: 50 vectors
+3. The model used is a sentence transformer (all-MiniLM-L6-v2) a small embedding transformer, which is a wrapper to tokenize, embed tokens into vectors of 384 dims, pool vectors of all chunk tokens (0 dimension) by taking mean(averaging), and performing L2 normalisation on the pooled vector.
+4. This 384dim embedding (list[float]) is now also added to the chunk metadata dictionary like 
+		{
+                "text":        chunk_text,
+                "source":      filename,
+                "page":        page_data["page"],
+                "chunk_index": chunk_index,
+                "file_hash":   file_hash,
+		    "embedding": embedding,
+            }
+5. One can now use this embedding wrapped to check similarity b/w a sentence (a user query maybe) and a chunk embedding through cosine similarity.
