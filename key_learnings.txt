@@ -23,6 +23,7 @@ if __name__ == "__main__":
         print()
 so when the for loop progresses, it provides the chunks of the next file. It is like pause and play: Return chunks for one file; pause till called again in the main for loop; return the next file's chunk
 
+
 .src/embedder.py
 
 1. Embeds the chunks it receives from the chunker.py. 
@@ -38,3 +39,31 @@ so when the for loop progresses, it provides the chunks of the next file. It is 
 		    "embedding": embedding,
             }
 5. One can now use this embedding wrapped to check similarity b/w a sentence (a user query maybe) and a chunk embedding through cosine similarity.
+
+
+
+.src/vectorstore.py
+
+1. ChromaDB is a vector database that stores all the vectors that created by embedding the chunks from the pdfs. The code vectorstore.py stores the embedded chunks in the Collection() object of ChromaDB.
+2. It adds a string index to each chunk with its source and chunk index.
+3. The ids, embeddings, texts and metadata (which contains source, page, chunk index and file hash) for each chunk are stored as parallel lists. So ids[i], embeddings[i] refer to the same chunk.
+4. These parallel lists are added to the collection with an add method. 
+5. We can now query these from the ChromaDB collection.
+    HOW TO QUERY:  
+        1. Write a text sentence ie. a query
+        2. The query is embedded by the same sentence transformer that made the chunks.
+        3. The embedding is then used to query the collection and the top k nearest matches with the embedding (cosine similarity) get returned.
+
+
+
+.src/retriever.py  
+
+1. This is the middle-man between the generator.py and pipeline.py. Which means it readies the chunks to be sent to the LLM (happens in pipeline.py) after getting the query/subqueries from the generator.py.
+2. generator.py breaks up one long query with multiple facets into subqueries, using an LLM. These subqueries are the inputs to the retriever.py
+3. After getting the subqueries, they are embedded with the sentence transformer to give no. of embeddings == sub-queries
+4. For each subquery, the collection at chromaDB is queried which provides 5 chunks per query
+5. The list of chunks is now received with n * 5 chunks. This list however may contain duplicates, as different sub queries might have hit up the same chunk.
+    Duplicates needed to be removed as they are wasted context window for the LLM downstream
+6. Deduplication is then carried out where each chunk in the list is checked with a dictionary of chunks (keyed by the chunk_id) called best_by_id. If the chunk doesn't exist in the dictionary, its added, if it exists 
+but for another query the same chunk is at a lesser distance, then it replaces the previous instance of the chunk on the basis of closeness
+7. After dedup, a list of chunks is returned which is sorted in ascending order of the distance. Meaning lower distance ranked higher.
