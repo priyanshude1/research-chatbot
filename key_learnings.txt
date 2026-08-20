@@ -67,3 +67,50 @@ so when the for loop progresses, it provides the chunks of the next file. It is 
 6. Deduplication is then carried out where each chunk in the list is checked with a dictionary of chunks (keyed by the chunk_id) called best_by_id. If the chunk doesn't exist in the dictionary, its added, if it exists 
 but for another query the same chunk is at a lesser distance, then it replaces the previous instance of the chunk on the basis of closeness
 7. After dedup, a list of chunks is returned which is sorted in ascending order of the distance. Meaning lower distance ranked higher.
+
+
+
+.src/generator.py
+
+1. This is the script that actually communicates with ollama to generate proper sub-queries from user query and to generate the prompt response from the LLM.
+2. 1st Task is to generate subqueries from user query:
+    For this task, a system prompt is required that goes additionally with the user query to the LLM. This communication is done through ollama.
+    - System Prompt: It is extra context to the LLM, which makes it behave the way we want, in this case: decomposing user queries
+    - Requests library: It is the library used for making HTTP calls. It lets python send HTTP requests to any server in this case ollama.
+    - Ollama: It is the local server that loads the LLM model into the GPU/RAM. This is the part that actually deals with the LLM directly. We send it requests, it sends those to the LLM and gets back the generated response in json format.
+            Ollama talks to the LLM (which is just weights downloaded in GGUF format) by interal inference engine and not through API calls. It runs inference through llama.cpp internally. 
+            Llama.cpp: Loads the quantised model weights (GGUF format) in the GPU VRAM, runs the transformer forward pass. Manages VRAM allocation and handles the autoregressive token generation loop.
+            Ollama is just a wrapper around the C++ code which runs inference loops and CUDA code which manages VRAM allocation.
+    
+                            requests API call                       llama.cpp
+            User (client) ----------------------> Ollama endpoint -----------------------------> Model 
+    - JSON: APIs convey information in the JSON format, where various information is relayed to the server. 
+        {
+            "model": model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {"temperature": temperature}  # temperature defines the flexibilty the model is allowed to have. 0 means strictly adhering to the system prompt which 0.7 means it has the flexibilty to have some variance in the responses
+            "system": system_prompt,
+            "format": "json"
+        }
+3. After subqueries are generated, they will be used in the pipeline.py code to give to the LLM to generate answer
+4. pipeline.py uses all the functions made in the scripts till now, ie chunking pdf, embedding chunks, retrieving chunks for the context, deduplication, query decomposition, generating answers from the LLM.   
+
+
+.src/pipeline.py
+
+Process outline:
+    Initialisation:
+    1. PDFs are chunked 
+    2. Chunks are embedded with sentence transformer
+    3. Embeddings are stored in the vectorstore with added chunk_ids, metadata, etc 
+    
+    Retrieval 
+    4. User(client) makes a user query
+    5. User query is decomposed into subqueries by API call to the LLM by generator and a system prompt.
+    6. Subqueries are used to retrieve the useful chunks from the chromaDB vector database
+    7. Best relevant chunks are retrieved and concatenated along with the metadata of source, page, etc to make the context  
+    8. User prompt is then assembled, by giving the context and the question that the user asked (ie. the original user query)
+    9. The final API call is then made which contains the system prompt and the user prompt as parameters.
+    10. The generated answer is the response text (in the json) made by the LLM
+
