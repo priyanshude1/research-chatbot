@@ -251,19 +251,3 @@ def chunk_all_documents(
         print(f"  → {len(chunks)} chunks extracted")
 
         yield filename, chunks
-
-
-# ── quick test ────────────────────────────────────────────────────────────────
-# Run this file directly to test chunking on whatever PDFs are in ./data/
-# Usage: python src/chunker.py
-# ──────────────────────────────────────────────────────────────────────────────
-if __name__ == "__main__":
-    print("Running chunker test...\n")
-
-    for filename, chunks in chunk_all_documents("./data"):
-        print(f"  First chunk preview:")
-        print(f"  Source:  {chunks[0]['source']}")
-        print(f"  Page:    {chunks[0]['page']}")
-        print(f"  Hash:    {chunks[0]['file_hash']}")
-        print(f"  Text:    {chunks[0]['text'][:200]}...")
-        print()
