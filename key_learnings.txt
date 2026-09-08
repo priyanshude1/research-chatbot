@@ -114,3 +114,21 @@ Process outline:
     9. The final API call is then made which contains the system prompt and the user prompt as parameters.
     10. The generated answer is the response text (in the json) made by the LLM
 
+
+main.py
+
+Exposes API endpoints which serve the frontend and communicates with the backend with API calls. All of these endpoints are used in the index.html
+where the buttons simply hit the API calls. Its simply a connector between pipeline.py and index.html
+
+
+
+V2-Agentic
+
+In the agentic version of the RAG chatbot, we are making a chat memory which allows us to ask multiple questions while keeping the previous prompts in context.
+This happens basically by storing the user prompts and responses from the assistant in turns (1 turn is 1 back and forth) in a double ended queue, with a capped 
+limit, crossing which the oldest message gets deleted from the window.
+
+memory.py
+This is what stores our content in the deque in dictionary where the content and its speaker is stored, in the session key.
+It also formats the history of the conversation such that it can be easily fed into the existing prompt when a new prompt is made,
+with proper line breaks and who said what, in string format.  

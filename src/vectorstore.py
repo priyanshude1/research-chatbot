@@ -276,6 +276,41 @@ def get_all_sources() -> list[str]:
     return sorted(sources)
 
 
+def get_summary(filename: str) -> Optional[dict]:
+    """
+    Retrieve the pre-generated summary chunk for one paper, if one exists.
+
+    Added for v2's get_paper_summary tool (tools.py). Unlike query(), this
+    is a metadata-only lookup — no embedding involved — because a summary
+    is fetched by exact filename match, not similarity search. index.py is
+    expected to store each paper's summary as its own chunk carrying
+    {"source": filename, "type": "summary"} metadata (in addition to the
+    ordinary content chunks for that same source, which have no "type" key).
+
+    Args:
+        filename: exact source filename, e.g. "vaswani_2017.pdf"
+
+    Returns:
+        {"source": filename, "text": summary_text} if a summary chunk is
+        found, otherwise None (e.g. filename doesn't exist, or index.py
+        hasn't generated summaries yet)
+    """
+    collection = _get_collection()
+
+    if collection.count() == 0:
+        return None
+
+    results = collection.get(
+        where={"$and": [{"source": filename}, {"type": "summary"}]},
+        include=["documents"],
+    )
+
+    if not results["ids"]:
+        return None
+
+    return {"source": filename, "text": results["documents"][0]}
+
+
 def get_total_chunks() -> int:
     """
     Return the total number of chunks currently stored in the collection.
