@@ -1,23 +1,30 @@
-# RAG Research Paper Chatbot — Project Design Manifest
-> This file is the single source of truth for all design decisions, architectural choices, and implementation constraints for this project. All Claude Code sessions must read and adhere to this document before writing any code.
+# RAG Research Paper Chatbot v2 — Agentic Conversational Assistant
+> This file is the single source of truth for all design decisions, architectural choices, and implementation constraints for v2 of this project. All Claude Code sessions must read and adhere to this document before writing any code. The v1 manifest is preserved on the main branch.
 
 ---
 
-## Project Summary
+## What Changed from v1
 
-A local-first Retrieval Augmented Generation (RAG) chatbot that answers questions about AI research papers. Built as a portfolio project targeting both MLOps Engineer and LLM Specialist roles in the German job market.
+v1 was a single-turn RAG pipeline — one question in, one answer out, no memory, no tool choice, local Llama 3B.
 
-The system indexes a corpus of AI research papers, retrieves relevant chunks at query time, and generates grounded answers using a local LLM. It is intentionally designed to run fully offline with zero data leakage.
+v2 is a multi-turn conversational agent with:
+- **Groq API** (Llama 3.1 70B) replacing local Ollama — better reasoning, free tier, no GPU needed at runtime
+- **Rolling conversation memory** — last 8 turns injected into every prompt
+- **ReAct agent loop** — model reasons about which tool to use, calls it, observes the result, loops until ready to answer
+- **4 tools** — semantic paper search, paper summary retrieval, list papers, arXiv web search
+- **Streaming responses** — tokens streamed to frontend as generated
+- **Docker + cloud deployment** — containerized, deployed to Render free tier (no GPU required since LLM is on Groq)
 
 ---
 
 ## Goals
 
-- Demonstrate end-to-end RAG pipeline architecture
-- Show MLOps tooling competence (FastAPI, Docker, structured codebase)
-- Produce a clean GitHub repository with clear architecture documentation
-- Deploy once in Docker locally for practice — no cloud deployment required
-- Keep the system modular so components can be swapped independently
+- Demonstrate agentic architecture built from scratch (no LangChain abstractions)
+- Show multi-turn conversational memory management
+- Show tool-use reasoning via ReAct loop
+- Demonstrate production deployment with Docker + Render
+- Produce a live public URL as a portfolio piece
+- Understand every component deeply — framework magic is explicitly avoided
 
 ---
 
@@ -25,156 +32,203 @@ The system indexes a corpus of AI research papers, retrieves relevant chunks at 
 
 | Component | Choice | Reason |
 |---|---|---|
-| LLM | Llama 3.2 3B via Ollama | Fits in 4GB VRAM, fast, free, fully local |
-| Embedding model | sentence-transformers `all-MiniLM-L6-v2` | Lightweight (~90MB), strong semantic similarity performance |
-| Vector database | ChromaDB (persistent, file-based) | Open source, no cost, no managed service needed, files on disk |
-| API framework | FastAPI | Standard for MLOps Python APIs, async support |
-| Containerization | Docker + docker-compose | MLOps portfolio signal, clean local deployment |
-| Document corpus | AI research papers (PDF) | ~10-15 foundational NLP/LLM papers |
+| LLM | Groq API — `llama-3.1-70b-versatile` | Free tier, 70B quality, fast inference, OpenAI-compatible |
+| Embedding model | sentence-transformers `all-MiniLM-L6-v2` | Same as v1, unchanged |
+| Vector database | ChromaDB (persistent, file-based) | Same as v1, unchanged |
+| Agent framework | Custom ReAct loop | Built from scratch — no LangChain/LangGraph |
+| Memory | Rolling window (last 8 turns) | Fixed context cost, covers real conversational use |
+| API framework | FastAPI with SSE streaming | Adds server-sent events over v1 |
+| Containerization | Docker + docker-compose | No GPU needed — LLM is on Groq |
+| Cloud deployment | Render free tier | Free, supports Docker, easy GitHub integration |
+| arXiv search | arXiv public API | Free, no API key needed |
 | Language | Python 3.10+ | Standard for ML ecosystem |
 
 ---
 
 ## Document Corpus
 
-Store all PDFs in `./data/`. Starting set:
+Same as v1 — PDFs in `./data/`. Same 20 foundational AI/LLM research papers. Corpus can still be expanded at any time by dropping PDFs into `./data/` and running `python index.py`.
 
-- Attention is All You Need (Vaswani et al., 2017)
-- BERT (Devlin et al., 2018)
-- GPT-2 (Radford et al., 2019)
-- DistilBERT (Sanh et al., 2019)
-- LoRA (Hu et al., 2021)
-- RAG — Retrieval-Augmented Generation for NLP (Lewis et al., 2020)
-- Llama 2 (Touvron et al., 2023)
-- InstructGPT / RLHF (Ouyang et al., 2022)
-- Chain of Thought Prompting (Wei et al., 2022)
-
-Corpus can be expanded at any time by dropping PDFs into `./data/` and running `python index.py`. New documents are detected via content hash comparison — already-indexed files are skipped automatically.
+New in v2: `index.py` also generates and stores a **pre-computed summary** for each paper at indexing time, stored as a special chunk with `type: "summary"` metadata. Used by the `get_paper_summary` tool.
 
 ---
 
-## Architecture
+## Agent Architecture — ReAct Loop
 
-### Two Phases
+The core of v2. ReAct = Reason + Act.
 
-**Phase 1 — Indexing (offline, run once or on corpus update)**
 ```
-PDFs in ./data/
-      ↓
-chunker.py        — split documents into chunks (500 tokens, 100 token overlap)
-      ↓
-embedder.py       — embed each chunk using sentence-transformers
-      ↓
-vectorstore.py    — store vectors + metadata in ChromaDB
+User message + conversation history
+        ↓
+Agent prompt sent to Groq LLM
+        ↓
+LLM reasons: "I need to search for X"
+LLM outputs: {"action": "search_papers", "query": "attention mechanisms"}
+        ↓
+Agent loop intercepts structured output
+Calls the actual tool function
+Gets result back
+        ↓
+Result fed back to LLM as observation
+        ↓
+LLM reasons again: "I have enough info" or "I need another tool"
+        ↓
+If done: LLM outputs final answer
+If not:  loop continues (max 5 iterations to prevent infinite loops)
+        ↓
+Final answer streamed to user
+        ↓
+Turn added to conversation memory
 ```
 
-**Phase 2 — Query (runtime, per user request)**
+### Tool Output Format
+
+The LLM must output either a tool call or a final answer in structured format:
+
+```json
+// tool call
+{"action": "search_papers", "query": "how does LoRA work"}
+
+// final answer
+{"action": "final_answer", "answer": "LoRA works by..."}
 ```
-User question
-      ↓
-generator.py      — LLM call #1: decompose query into sub-queries
-      ↓
-embedder.py       — embed each sub-query
-      ↓
-retriever.py      — ChromaDB similarity search, top-5 per sub-query, deduplicate
-      ↓
-pipeline.py       — assemble prompt (system + chunks + question)
-      ↓
-generator.py      — LLM call #2: generate final answer from retrieved context
-      ↓
-FastAPI response
+
+If the LLM fails to produce valid JSON after 2 retries, agent.py falls back to treating the raw output as the final answer.
+
+---
+
+## The 4 Tools
+
+### 1. search_papers
 ```
+Input:  query (str), filter_source (str, optional)
+Does:   embeds query, searches ChromaDB, returns top-5 chunks with metadata
+Used:   for any factual question about paper content
+```
+
+### 2. get_paper_summary
+```
+Input:  filename (str) e.g. "vaswani_2017.pdf"
+Does:   retrieves pre-generated summary chunk from ChromaDB by metadata filter
+Used:   when user asks to summarize a specific paper
+```
+
+### 3. list_papers
+```
+Input:  none
+Does:   returns all unique source filenames from ChromaDB metadata
+Used:   when user asks what papers are available
+```
+
+### 4. web_search
+```
+Input:  query (str)
+Does:   calls arXiv API, returns top-5 paper titles + abstracts + links
+Used:   when user asks about recent papers or topics not in the local corpus
+```
+
+---
+
+## Conversation Memory
+
+Managed by `memory.py`. Rolling window of last 8 turns (1 turn = 1 user message + 1 assistant response).
+
+```python
+# structure stored per turn
+{
+    "role": "user" | "assistant",
+    "content": str
+}
+```
+
+Memory is **session-scoped** — persists within one browser session, resets on page refresh. No cross-session persistence.
+
+Injected into every agent prompt as a formatted history block before the current user message. Oldest turns dropped automatically when window is full.
+
+Context window budget:
+```
+System prompt:       ~500 tokens
+Conversation memory: ~2000 tokens (8 turns x ~250 tokens each)
+Tool observations:   ~1500 tokens
+Current question:    ~100 tokens
+─────────────────────────────────
+Reserved for output: ~27000 tokens remaining (70B model, 32K context)
+```
+
+---
+
+## Streaming
+
+FastAPI endpoint `/query` uses **Server-Sent Events (SSE)** to stream tokens as they arrive from Groq.
+
+```python
+from fastapi.responses import StreamingResponse
+
+@app.post("/query")
+def query(request: QueryRequest):
+    return StreamingResponse(
+        agent.stream_response(request),
+        media_type="text/event-stream"
+    )
+```
+
+Frontend JavaScript reads the SSE stream and appends tokens to the answer div as they arrive — same typing effect as ChatGPT.
 
 ---
 
 ## Project Structure
 
 ```
-rag-chatbot/
-├── data/                      ← PDF research papers go here
-├── chroma_db/                 ← ChromaDB persistent storage (gitignored)
+research-chatbot/                   <- same repo, v2-agentic branch
+├── data/                           <- same PDFs
+├── chroma_db/                      <- same vector store (gitignored)
 ├── src/
-│   ├── chunker.py             ← PDF parsing + text chunking
-│   ├── embedder.py            ← sentence-transformers embedding
-│   ├── vectorstore.py         ← ChromaDB client wrapper (store + query)
-│   ├── retriever.py           ← similarity search + deduplication logic
-│   ├── generator.py           ← Ollama LLM calls (decomposition + generation)
-│   └── pipeline.py            ← connects all components end to end
+│   ├── chunker.py                  <- UNCHANGED from v1
+│   ├── embedder.py                 <- UNCHANGED from v1
+│   ├── vectorstore.py              <- UNCHANGED from v1
+│   ├── retriever.py                <- UNCHANGED from v1
+│   ├── memory.py                   <- NEW: rolling conversation window
+│   ├── tools.py                    <- NEW: 4 tool functions
+│   ├── agent.py                    <- NEW: ReAct loop + tool dispatch
+│   └── generator.py                <- MODIFIED: Groq instead of Ollama
 ├── api/
-│   ├── main.py                ← FastAPI app (endpoints, request/response models)
+│   ├── main.py                     <- MODIFIED: SSE streaming + sessions
 │   └── static/
-│       └── index.html         ← single file UI (vanilla HTML + CSS + JS)
-├── index.py                   ← run this to index ./data documents
-├── Dockerfile
-├── docker-compose.yml
-├── requirements.txt
-├── .env.example               ← environment variable template
-├── CLAUDE.md                  ← this file
-└── README.md                  ← portfolio-facing documentation
+│       └── index.html              <- MODIFIED: chat history UI + streaming
+├── index.py                        <- MODIFIED: adds summary generation
+├── Dockerfile                      <- NEW: no GPU, Groq handles LLM
+├── docker-compose.yml              <- NEW
+├── .env.example                    <- MODIFIED: adds Groq vars
+├── requirements.txt                <- MODIFIED: adds groq, httpx
+├── CLAUDE.md                       <- this file (v2)
+└── README.md                       <- MODIFIED: v2 architecture + deploy instructions
 ```
-
----
-
-## Implementation Constraints
-
-### Chunking
-- Chunk size: **500 tokens**
-- Overlap: **100 tokens** (last 100 tokens of chunk N become first 100 of chunk N+1)
-- Each chunk stores metadata: `source` (filename), `page`, `chunk_index`, `file_hash`
-- Rationale: overlap prevents information loss at chunk boundaries; 500 tokens balances context richness vs retrieval precision
-
-### Embedding
-- Model: `sentence-transformers/all-MiniLM-L6-v2`
-- Output dimension: 384
-- Pooling: mean pooling (handled internally by sentence-transformers)
-- The embedding model is separate from the LLM — different model, different purpose
-
-### Vector Store
-- ChromaDB persistent client pointing to `./chroma_db/`
-- Collection name: `"research_papers"`
-- Metadata stored per chunk: `source`, `page`, `chunk_index`, `file_hash`, `text`
-- Incremental indexing: compute MD5 hash of each file, skip if hash already in metadata
-
-### Retrieval
-- Default top-K: **5 chunks per sub-query**
-- Deduplicate by chunk ID across sub-queries
-- Support metadata filtering by `source` filename for paper-specific queries
-- Similarity metric: cosine similarity (ChromaDB default)
-
-### Query Decomposition
-- LLM Call #1 to Ollama with system prompt instructing JSON output
-- Decompose into 2-4 sub-queries maximum
-- Temperature: 0 (deterministic decomposition)
-- Parse JSON response, fall back to original query if parsing fails
-
-### Generation
-- LLM Call #2 to Ollama with retrieved chunks injected as context
-- System prompt instructs model to answer only from provided context
-- Model must cite which paper a claim comes from
-- If context does not contain the answer, model must say so explicitly — no hallucination
-- Temperature: 0.7
-
-### Ollama Integration
-- Base URL: `http://localhost:11434` (configurable via env var)
-- Model: `llama3.2:3b` (configurable via env var)
-- Both LLM calls use the same model instance
 
 ---
 
 ## Environment Variables
 
-All configurable values live in `.env`. Never hardcode:
-
 ```
-OLLAMA_BASE_URL=http://localhost:11434
-OLLAMA_MODEL=llama3.2:3b
+# Groq (replaces Ollama)
+GROQ_API_KEY=your_groq_api_key_here
+GROQ_MODEL=llama-3.1-70b-versatile
+
+# Embedding (unchanged)
 EMBEDDING_MODEL=all-MiniLM-L6-v2
+
+# ChromaDB (unchanged)
 CHROMA_PATH=./chroma_db
 COLLECTION_NAME=research_papers
+
+# Chunking (unchanged)
 CHUNK_SIZE=500
 CHUNK_OVERLAP=100
 TOP_K=5
 DATA_PATH=./data
+
+# Agent
+MAX_AGENT_ITERATIONS=5
+MEMORY_WINDOW_SIZE=8
 ```
 
 ---
@@ -183,113 +237,90 @@ DATA_PATH=./data
 
 ```
 POST /query
-    body: { "question": str, "filter_source": str (optional) }
-    returns: { "answer": str, "sources": list[str], "chunks_used": int }
+    body:    { "question": str, "session_id": str, "filter_source": str (optional) }
+    returns: SSE stream of tokens, ends with [DONE] + sources JSON
 
-POST /index
-    body: { "force_reindex": bool (default false) }
-    returns: { "indexed": list[str], "skipped": list[str] }
-
-GET /documents
+GET  /documents
     returns: { "documents": list[str], "total_chunks": int }
 
-GET /health
-    returns: { "status": "ok", "ollama": bool, "chromadb": bool }
+POST /index
+    body:    { "force_reindex": bool }
+    returns: { "indexed": list[str], "skipped": list[str] }
+
+DELETE /session/{session_id}
+    returns: { "cleared": bool }    <- clears conversation memory for that session
+
+GET  /health
+    returns: { "status": str, "groq": bool, "chromadb": bool }
+```
+
+Note: `/query` now takes a `session_id` so the server can maintain separate memory per browser session. Frontend generates a UUID on page load and passes it with every request.
+
+---
+
+## Deployment
+
+**Docker:**
+- Single container running FastAPI + ChromaDB
+- No GPU required — Groq handles all LLM inference remotely
+- ChromaDB mounted as a volume so index persists across container restarts
+- GROQ_API_KEY passed as environment variable at runtime (never baked into image)
+
+**Render free tier:**
+- Connect GitHub repo, select v2-agentic branch
+- Set environment variables in Render dashboard
+- Auto-deploys on every push to v2-agentic
+- Free tier spins down after inactivity — acceptable for portfolio demo
+
+```dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+EXPOSE 8000
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
 
 ---
 
-## Frontend
+## Build Order (2-week sprint)
 
-### Decision: Vanilla HTML — No Framework
-
-A single `index.html` file served directly by FastAPI. No React, no Vue, no npm, no build step. The UI is a thin wrapper — the substance of this project is the pipeline, not the interface.
-
-### What the UI Contains
-- Text input for the user's question
-- Dropdown to optionally filter by a specific paper (populated from `GET /documents`)
-- Submit button
-- Response area showing the generated answer
-- Sources section listing which papers were used
-
-### How It Works
-The HTML file makes a `fetch()` call to `POST /query`, receives JSON, and renders the answer and sources. Vanilla JS only.
-
-### Project Structure Update
 ```
-api/
-├── main.py
-└── static/
-    └── index.html     ← single file, vanilla HTML + CSS + JS
+Days 1-2:   Groq integration + memory.py
+Days 3-5:   tools.py + agent.py (ReAct loop) <- hardest part, most time
+Days 6-7:   index.py summary generation + arXiv web search tool
+Days 8-9:   FastAPI SSE streaming + session handling
+Days 10-12: Docker + Render deployment
+Days 13-14: Buffer — debugging, README, cleanup
 ```
-
-FastAPI serves it with:
-```python
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-
-app.mount("/static", StaticFiles(directory="api/static"), name="static")
-
-@app.get("/")
-def serve_ui():
-    return FileResponse("api/static/index.html")
-```
-
-### What This Is Not
-- Not a React/Vue/Angular app
-- Not a separate frontend server
-- Not styled with a CSS framework — basic clean styling only
-- The UI is built last (Phase 4), after the pipeline and API are fully working
 
 ---
 
 ## What This Project Is Not
 
-- Not a fine-tuning project — the LLM weights are never updated
-- Not a cloud-deployed production system — local first, Docker for practice only
-- Not a generic chatbot — it answers only from the indexed document corpus
-- Not using a managed vector database — ChromaDB files on disk is intentional
+- Not using LangChain, LangGraph, or any agent framework — ReAct is implemented manually
+- Not persistent memory across sessions — session-scoped only
+- Not a multi-user production system — single demo user assumed
+- Not using a managed vector database — ChromaDB files on disk
+- Not fine-tuning any model — inference only
 
 ---
 
-## Phased Build Order
+## Known Limitations (Document in README)
 
-**Phase 1 — Core pipeline (build first, test end to end)**
-`chunker.py` → `embedder.py` → `vectorstore.py` → `retriever.py` → `generator.py` → `pipeline.py` → `index.py`
-
-**Phase 2 — API layer**
-`api/main.py` with all four endpoints wired to pipeline.py
-
-**Phase 3 — Docker**
-`Dockerfile` + `docker-compose.yml` — containerize app, mount chroma_db as volume
-
-**Phase 4 — Frontend**
-`api/static/index.html` — vanilla HTML/CSS/JS UI wired to FastAPI endpoints
-
-**Phase 5 — Polish**
-`README.md` with architecture diagram, setup instructions, example queries and outputs for GitHub portfolio
+- Groq free tier has rate limits (~30 req/min) — not suitable for high traffic
+- ReAct loop adds latency — 2-5 LLM calls per complex question
+- arXiv web search returns metadata only, not full paper content
+- Session memory resets on page refresh — no persistence
+- Render free tier spins down after inactivity (~30s cold start)
 
 ---
 
-## Known Limitations (Document These in README)
+## Files Unchanged from v1
 
-- 4GB VRAM limits model size to 3B parameters — larger models require cloud GPU
-- Query decomposition adds one extra LLM call per query (~1-2 seconds latency)
-- Cross-document synthesis quality limited by 3B model capability
-- ChromaDB file-based storage not suitable for high-concurrency production use
-- No authentication on FastAPI endpoints — demo use only
+`chunker.py`, `embedder.py`, `vectorstore.py`, `retriever.py` — do not modify these unless a bug is found. All new functionality is additive, not replacing existing components.
 
 ---
 
-## Portfolio Notes
-
-- Clean one-responsibility-per-file structure is intentional — demonstrates production code awareness
-- Incremental indexing with hash comparison demonstrates real engineering thinking beyond tutorials
-- Query decomposition demonstrates awareness of naive RAG failure modes
-- Metadata filtering demonstrates paper-specific query handling
-- The `/health` endpoint demonstrates MLOps operational awareness
-- Docker volume mounting for ChromaDB persistence demonstrates container data management
-
----
-
-*Last updated: Project design phase. Update this file if any architectural decision changes during implementation.*
+*Last updated: v2 planning phase. Update this file if any architectural decision changes during implementation.*
