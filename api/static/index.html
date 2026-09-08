@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="A local-first research paper assistant for grounded AI literature exploration.">
+    <title>Paper Atlas | Research Assistant</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
+
+        :root {
+            --ink: #e8eef5;
+            --ink-soft: #8f9faf;
+            --paper: #0d1724;
+            --paper-deep: #18283a;
+            --white: #f5f8fb;
+            --blue: #5ca9e6;
+            --blue-bright: #86c8f4;
+            --amber: #e3b56b;
+            --line: #26394d;
+            --panel: #111f2e;
+            --shadow: 0 24px 60px rgba(0, 0, 0, 0.24);
+            --radius: 12px;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            color: var(--ink);
+            background:
+                linear-gradient(115deg, rgba(92, 169, 230, 0.07), transparent 35%),
+                linear-gradient(90deg, rgba(143, 159, 175, 0.045) 1px, transparent 1px) 0 0 / 56px 56px,
+                linear-gradient(rgba(143, 159, 175, 0.045) 1px, transparent 1px) 0 0 / 56px 56px,
+                var(--paper);
+            font-family: 'DM Sans', sans-serif;
+            min-height: 100vh;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0 0 auto;
+            height: 5px;
+            background: var(--blue);
+            z-index: 5;
+        }
+
+        button, textarea, select { font: inherit; }
+        button { cursor: pointer; }
+
+        .shell {
+            width: min(1180px, calc(100% - 48px));
+            margin: 0 auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 31px 0 28px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .brand { display: flex; align-items: center; gap: 12px; }
+        .brand-mark {
+            display: grid;
+            place-items: center;
+            width: 39px;
+            height: 39px;
+            color: #08131f;
+            background: var(--blue);
+            border-radius: 8px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 21px;
+            font-weight: 700;
+        }
+        .brand-name {
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: 19px;
+            font-weight: 700;
+            letter-spacing: 0;
+        }
+        .brand-type {
+            color: var(--ink-soft);
+            font-family: 'DM Mono', monospace;
+            font-size: 10px;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+        }
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            color: var(--ink-soft);
+            font-family: 'DM Mono', monospace;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--amber);
+            box-shadow: 0 0 0 4px rgba(227, 181, 107, 0.13);
+        }
+        .status-dot.online { background: #68c49a; box-shadow: 0 0 0 4px rgba(104, 196, 154, 0.13); }
+        .status-dot.offline { background: #e27e72; box-shadow: 0 0 0 4px rgba(226, 126, 114, 0.13); }
+
+        main { padding: 72px 0 80px; }
+        .intro { max-width: 760px; animation: rise 0.7s ease both; }
+        .eyebrow {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--blue-bright);
+            font-family: 'DM Mono', monospace;
+            font-size: 11px;
+            letter-spacing: 0.09em;
+            text-transform: uppercase;
+        }
+        .eyebrow::before { content: ''; width: 28px; height: 2px; background: var(--blue); }
+        h1 {
+            margin: 20px 0 17px;
+            max-width: 750px;
+            font-family: 'Space Grotesk', sans-serif;
+            font-size: clamp(43px, 6vw, 76px);
+            line-height: 0.98;
+            letter-spacing: 0;
+        }
+        h1 em { color: var(--blue-bright); font-style: normal; }
+        .intro p {
+            max-width: 610px;
+            margin: 0;
+            color: var(--ink-soft);
+            font-size: 17px;
+            line-height: 1.65;
+        }
+
+        .workspace {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 294px;
+            gap: 22px;
+            align-items: start;
+            margin-top: 48px;
+            animation: rise 0.7s 0.1s ease both;
+        }
+        .composer, .side-panel, .result {
+            background: rgba(17, 31, 46, 0.92);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+        }
+        .composer { padding: 27px; }
+        .panel-heading {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            margin-bottom: 21px;
+        }
+        h2, h3 { margin: 0; font-family: 'Space Grotesk', sans-serif; letter-spacing: 0; }
+        h2 { font-size: 21px; }
+        .mono-label {
+            color: var(--ink-soft);
+            font-family: 'DM Mono', monospace;
+            font-size: 10px;
+            letter-spacing: 0.06em;
+            text-transform: uppercase;
+        }
+        textarea {
+            display: block;
+            width: 100%;
+            min-height: 148px;
+            resize: vertical;
+            padding: 18px;
+            border: 1px solid var(--line);
+            border-radius: 12px;
+            outline: none;
+            color: var(--ink);
+            background: var(--paper);
+            font-size: 16px;
+            line-height: 1.55;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        textarea::placeholder { color: #718295; }
+        textarea:focus { border-color: var(--blue); box-shadow: 0 0 0 4px rgba(92, 169, 230, 0.12); }
+        .composer-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+            margin-top: 18px;
+        }
+        select {
+            min-width: 230px;
+            padding: 12px 34px 12px 13px;
+            border: 1px solid var(--line);
+            border-radius: 9px;
+            color: var(--ink-soft);
+            background: var(--white);
+            font-size: 13px;
+        }
+        .ask-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 14px;
+            padding: 13px 17px 13px 20px;
+            border: 0;
+            border-radius: 9px;
+            color: #08131f;
+            background: var(--blue);
+            font-weight: 700;
+            transition: transform 0.2s, background 0.2s;
+        }
+        .ask-button:hover { background: var(--blue-bright); transform: translateY(-2px); }
+        .ask-button:disabled { cursor: wait; opacity: 0.65; transform: none; }
+        .arrow { font-size: 20px; line-height: 12px; }
+
+        .side-panel { padding: 23px; box-shadow: none; background: #16283b; }
+        .side-panel h3 { color: var(--white); font-size: 16px; }
+        .side-panel .mono-label { display: block; margin-top: 6px; }
+        .paper-count {
+            display: flex;
+            align-items: end;
+            gap: 9px;
+            margin: 28px 0 23px;
+            padding-bottom: 20px;
+            border-bottom: 1px solid var(--line);
+        }
+        .paper-count strong { color: var(--blue-bright); font-family: 'Space Grotesk', sans-serif; font-size: 47px; line-height: 0.8; }
+        .paper-count span { color: #b5c3d1; font-size: 12px; }
+        .side-list { display: grid; gap: 13px; margin: 0; padding: 0; list-style: none; }
+        .side-list li { display: flex; gap: 10px; color: #c1cedb; font-size: 12px; line-height: 1.45; }
+        .side-list li::before { content: '01'; color: var(--blue); font-family: 'DM Mono', monospace; font-size: 10px; }
+        .side-list li:nth-child(2)::before { content: '02'; }
+        .side-list li:nth-child(3)::before { content: '03'; }
+        .side-foot { margin-top: 28px; color: var(--blue-bright); font-family: 'DM Mono', monospace; font-size: 10px; line-height: 1.6; text-transform: uppercase; }
+
+        .result-wrap { margin-top: 26px; }
+        .result { display: none; padding: 30px; animation: rise 0.45s ease both; }
+        .result.visible { display: block; }
+        .result-header { display: flex; justify-content: space-between; gap: 15px; align-items: center; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
+        .result-title { display: flex; align-items: center; gap: 11px; }
+        .result-icon { display: grid; place-items: center; width: 28px; height: 28px; color: #08131f; background: var(--blue); border-radius: 7px; font-size: 14px; }
+        .answer { max-width: 850px; margin: 26px 0 28px; color: #c7d4e1; font-size: 16px; line-height: 1.75; white-space: pre-wrap; }
+        .sources { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding-top: 19px; border-top: 1px solid var(--line); }
+        .source-label { margin-right: 5px; color: var(--ink-soft); font-family: 'DM Mono', monospace; font-size: 10px; text-transform: uppercase; }
+        .source-chip { padding: 7px 10px; border: 1px solid #315676; border-radius: 5px; color: var(--blue-bright); background: #142c43; font-family: 'DM Mono', monospace; font-size: 10px; }
+        .error { display: none; margin-top: 18px; padding: 14px 16px; border-left: 3px solid #e27e72; color: #f0aaa1; background: #321f28; font-size: 13px; line-height: 1.45; }
+        .error.visible { display: block; }
+        .loading { display: none; align-items: center; gap: 10px; margin-top: 20px; color: var(--ink-soft); font-family: 'DM Mono', monospace; font-size: 11px; text-transform: uppercase; }
+        .loading.visible { display: flex; }
+        .loader { width: 14px; height: 14px; border: 2px solid var(--paper-deep); border-top-color: var(--blue); border-radius: 50%; animation: spin 0.8s linear infinite; }
+
+        footer { display: flex; justify-content: space-between; gap: 15px; padding: 25px 0 35px; color: var(--ink-soft); font-family: 'DM Mono', monospace; font-size: 10px; letter-spacing: 0.03em; text-transform: uppercase; }
+        @keyframes rise { from { opacity: 0; transform: translateY(15px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @media (max-width: 800px) {
+            .shell { width: min(100% - 30px, 620px); }
+            header { padding-top: 25px; }
+            .brand-type { display: none; }
+            main { padding-top: 52px; }
+            h1 { font-size: clamp(42px, 12vw, 65px); }
+            .workspace { grid-template-columns: 1fr; margin-top: 36px; }
+            .side-panel { order: -1; }
+            .side-panel .paper-count { display: inline-flex; margin: 17px 28px 0 0; padding: 0; border: 0; vertical-align: middle; }
+            .side-panel .side-list, .side-foot { display: none; }
+            .composer-footer { align-items: stretch; flex-direction: column; }
+            select, .ask-button { width: 100%; }
+            .result-header { align-items: flex-start; flex-direction: column; }
+            footer { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+    <div class="shell">
+        <header>
+            <div class="brand">
+                <div class="brand-mark">P</div>
+                <div>
+                    <div class="brand-name">Paper Atlas</div>
+                    <div class="brand-type">Local research intelligence</div>
+                </div>
+            </div>
+            <div class="status" aria-live="polite"><span id="statusDot" class="status-dot"></span><span id="statusText">checking system</span></div>
+        </header>
+
+        <main>
+            <section class="intro">
+                <div class="eyebrow">AI literature, made searchable</div>
+                <h1>Ask the papers.<br><em>Keep the signal.</em></h1>
+                <p>A grounded research assistant for exploring the ideas, methods, and trade-offs inside a growing library of AI papers.</p>
+            </section>
+
+            <section class="workspace" aria-label="Research assistant workspace">
+                <div>
+                    <form id="queryForm" class="composer">
+                        <div class="panel-heading">
+                            <h2>Start an inquiry</h2>
+                            <span class="mono-label">retrieval / generation</span>
+                        </div>
+                        <textarea id="question" name="question" required placeholder="What would you like to understand? Try: How does LoRA reduce the memory cost of fine-tuning?" aria-label="Research question"></textarea>
+                        <div class="composer-footer">
+                            <select id="sourceFilter" name="source" aria-label="Limit search to a paper">
+                                <option value="">Search all papers</option>
+                            </select>
+                            <button class="ask-button" id="askButton" type="submit"><span>Ask the atlas</span><span class="arrow">&#8594;</span></button>
+                        </div>
+                        <div id="loading" class="loading" aria-live="polite"><span class="loader"></span><span>Reading relevant passages</span></div>
+                        <div id="error" class="error" role="alert"></div>
+                    </form>
+
+                    <div id="result" class="result-wrap">
+                        <article class="result" id="resultCard">
+                            <div class="result-header">
+                                <div class="result-title"><span class="result-icon">&#10003;</span><h2>Research note</h2></div>
+                                <span class="mono-label" id="chunksUsed"></span>
+                            </div>
+                            <div class="answer" id="answer"></div>
+                            <div class="sources" id="sources"></div>
+                        </article>
+                    </div>
+                </div>
+
+                <aside class="side-panel">
+                    <h3>Inside the atlas</h3>
+                    <span class="mono-label">a local-first paper corpus</span>
+                    <div class="paper-count"><strong id="paperCount">--</strong><span>papers indexed</span></div>
+                    <ul class="side-list">
+                        <li>Queries are decomposed into focused research threads.</li>
+                        <li>Relevant passages are retrieved from the local index.</li>
+                        <li>Every answer is returned with its source papers.</li>
+                    </ul>
+                    <div class="side-foot">No cloud inference<br>Context before confidence</div>
+                </aside>
+            </section>
+        </main>
+
+        <footer><span>Paper Atlas / research-chatbot</span><span>Built for curious minds</span></footer>
+    </div>
+
+    <script>
+        const queryForm = document.getElementById('queryForm');
+        const questionInput = document.getElementById('question');
+        const sourceFilter = document.getElementById('sourceFilter');
+        const askButton = document.getElementById('askButton');
+        const loading = document.getElementById('loading');
+        const errorBox = document.getElementById('error');
+        const resultCard = document.getElementById('resultCard');
+        const answerBox = document.getElementById('answer');
+        const sourcesBox = document.getElementById('sources');
+        const chunksUsed = document.getElementById('chunksUsed');
+        const paperCount = document.getElementById('paperCount');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+
+        function setStatus(isOnline, label) {
+            statusDot.className = `status-dot ${isOnline ? 'online' : 'offline'}`;
+            statusText.textContent = label;
+        }
+
+        function showError(message) {
+            errorBox.textContent = message;
+            errorBox.classList.add('visible');
+        }
+
+        async function loadLibrary() {
+            try {
+                const response = await fetch('/documents');
+                if (!response.ok) throw new Error('The document list could not be loaded.');
+                const data = await response.json();
+                paperCount.textContent = data.documents.length;
+                data.documents.forEach((document) => {
+                    const option = document.createElement('option');
+                    option.value = document;
+                    option.textContent = document.replace(/\.pdf$/i, '');
+                    sourceFilter.appendChild(option);
+                });
+            } catch (error) {
+                paperCount.textContent = '0';
+                setStatus(false, 'api unavailable');
+            }
+        }
+
+        async function checkHealth() {
+            try {
+                const response = await fetch('/health');
+                const data = await response.json();
+                setStatus(data.ollama && data.chromadb, data.ollama && data.chromadb ? 'system ready' : 'needs attention');
+            } catch (error) {
+                setStatus(false, 'api unavailable');
+            }
+        }
+
+        queryForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            const question = questionInput.value.trim();
+            if (!question) return;
+
+            askButton.disabled = true;
+            loading.classList.add('visible');
+            errorBox.classList.remove('visible');
+            resultCard.classList.remove('visible');
+
+            try {
+                const response = await fetch('/query', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question, filter_source: sourceFilter.value || null })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || 'The query could not be completed.');
+
+                answerBox.textContent = data.answer;
+                chunksUsed.textContent = `${data.chunks_used} passage${data.chunks_used === 1 ? '' : 's'} used`;
+                sourcesBox.innerHTML = '<span class="source-label">Sources</span>';
+                if (data.sources.length === 0) {
+                    sourcesBox.innerHTML += '<span class="mono-label">No matching papers</span>';
+                } else {
+                    data.sources.forEach((source) => {
+                        const chip = document.createElement('span');
+                        chip.className = 'source-chip';
+                        chip.textContent = source;
+                        sourcesBox.appendChild(chip);
+                    });
+                }
+                resultCard.classList.add('visible');
+            } catch (error) {
+                showError(error.message);
+            } finally {
+                askButton.disabled = false;
+                loading.classList.remove('visible');
+            }
+        });
+
+        loadLibrary();
+        checkHealth();
+    </script>
+</body>
+</html>

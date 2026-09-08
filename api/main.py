@@ -4,6 +4,9 @@ api/main.py — FastAPI Application
 Responsibility:
     HTTP layer on top of the pipeline built in src/. Exposes the four
     endpoints defined in CLAUDE.md (/query, /index, /documents, /health)
+    and serves the browser client from api/static/index.html at /. The
+    frontend is kept inside the same FastAPI application so browser requests
+    can use relative API paths and do not require a separate web server.
     as thin wrappers around pipeline.answer_question(), index.run_indexing(),
     and vectorstore's read helpers. No retrieval, generation, or indexing
     logic lives here — this file only validates requests, calls the
@@ -23,6 +26,11 @@ Concurrency note:
     demo use only"). Ollama itself serializes generation and ChromaDB's
     file-based storage isn't built for concurrent writes, so no attempt is
     made here to support multiple simultaneous requests safely.
+
+    Static-file note:
+        The static directory is mounted at /static and the root route serves
+        index.html. The directory is created before the page is added so this
+        backend boundary is ready for the frontend implementation.
 """
 
 import os
@@ -37,6 +45,8 @@ from typing import Optional
 
 import requests
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 import pipeline
@@ -47,6 +57,15 @@ from index import run_indexing
 _OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 
 app = FastAPI(title="RAG Research Paper Chatbot")
+
+_STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
+
+
+@app.get("/")
+def serve_ui():
+    """Serve the single-page browser client from FastAPI's static directory."""
+    return FileResponse(os.path.join(_STATIC_DIR, "index.html"))
 
 
 # ── Request / response models ───────────────────────────────────────────────
