@@ -2,8 +2,8 @@
 generator.py — Groq LLM Calls (Query Decomposition + Answer Generation)
 
 Responsibility:
-    The only module in the pipeline that talks to the LLM (Llama 3.2 3B via
-    Groq). It is used twice per query, for two different purposes:
+    The only module in the pipeline that talks to the LLM (OpenAI GPT-OSS 120B
+    via Groq). It is used twice per query, for two different purposes:
 
     LLM call #1 — decompose_query()
         Takes the user's raw question and asks the LLM to break it into
@@ -35,9 +35,11 @@ Why two temperatures?
 import json
 import os
 from groq import Groq
+from dotenv import load_dotenv
 
 
-_GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-70b-versatile")
+load_dotenv()
+_GROQ_MODEL = os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
 _groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 _DECOMPOSE_SYSTEM_PROMPT = """You are a query decomposition assistant for a research paper search system.

@@ -17,7 +17,7 @@ Do not introduce LangChain, LangGraph, or another agent framework. The agent loo
 ## Technology Contract
 
 - Python 3.10+
-- Groq API with `llama-3.1-70b-versatile` for LLM inference
+- Groq API with `openai/gpt-oss-120b` for LLM inference
 - `sentence-transformers` with `all-MiniLM-L6-v2` for embeddings
 - Persistent, file-based ChromaDB
 - FastAPI API with Server-Sent Events (SSE)
@@ -115,7 +115,7 @@ Use environment variables and `.env` loading for configuration. Expected v2 vari
 
 ```text
 GROQ_API_KEY
-GROQ_MODEL=llama-3.1-70b-versatile
+GROQ_MODEL=openai/gpt-oss-120b
 EMBEDDING_MODEL=all-MiniLM-L6-v2
 CHROMA_PATH=./chroma_db
 COLLECTION_NAME=research_papers

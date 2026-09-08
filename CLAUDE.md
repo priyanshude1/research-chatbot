@@ -8,7 +8,7 @@
 v1 was a single-turn RAG pipeline — one question in, one answer out, no memory, no tool choice, local Llama 3B.
 
 v2 is a multi-turn conversational agent with:
-- **Groq API** (Llama 3.1 70B) replacing local Ollama — better reasoning, free tier, no GPU needed at runtime
+- **Groq API** (`openai/gpt-oss-120b`) replacing local Ollama — better reasoning, free tier, no GPU needed at runtime
 - **Rolling conversation memory** — last 8 turns injected into every prompt
 - **ReAct agent loop** — model reasons about which tool to use, calls it, observes the result, loops until ready to answer
 - **4 tools** — semantic paper search, paper summary retrieval, list papers, arXiv web search
@@ -32,7 +32,7 @@ v2 is a multi-turn conversational agent with:
 
 | Component | Choice | Reason |
 |---|---|---|
-| LLM | Groq API — `llama-3.1-70b-versatile` | Free tier, 70B quality, fast inference, OpenAI-compatible |
+| LLM | Groq API — `openai/gpt-oss-120b` | OpenAI open-weight 120B model, fast hosted inference, no local GPU required |
 | Embedding model | sentence-transformers `all-MiniLM-L6-v2` | Same as v1, unchanged |
 | Vector database | ChromaDB (persistent, file-based) | Same as v1, unchanged |
 | Agent framework | Custom ReAct loop | Built from scratch — no LangChain/LangGraph |
@@ -211,7 +211,7 @@ research-chatbot/                   <- same repo, v2-agentic branch
 ```
 # Groq (replaces Ollama)
 GROQ_API_KEY=your_groq_api_key_here
-GROQ_MODEL=llama-3.1-70b-versatile
+GROQ_MODEL=openai/gpt-oss-120b
 
 # Embedding (unchanged)
 EMBEDDING_MODEL=all-MiniLM-L6-v2

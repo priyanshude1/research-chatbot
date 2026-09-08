@@ -32,7 +32,7 @@ Why cap the number of chunks sent to the LLM?
     retriever.retrieve() can return up to top_k * len(sub_queries) unique
     chunks (e.g. 4 sub-queries * top_k=5 = up to 20) before any prompt-size
     consideration — deduplication reduces this but doesn't bound it.
-    Llama 3.2 3B runs locally with a limited context window, and every
+    The hosted GPT-OSS 120B model receives a finite context window, and every
     extra chunk adds latency and dilutes the model's attention on the
     passages that actually matter. Chunks are already ranked by distance
     (most similar first) by retriever.py, so capping is just "keep the
