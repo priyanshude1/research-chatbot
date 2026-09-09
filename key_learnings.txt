@@ -132,3 +132,15 @@ memory.py
 This is what stores our content in the deque in dictionary where the content and its speaker is stored, in the session key.
 It also formats the history of the conversation such that it can be easily fed into the existing prompt when a new prompt is made,
 with proper line breaks and who said what, in string format.  
+
+
+tools.py
+They are functions that the agent can use to process the query. Their usage is dictated by the LLM as it sends the output in a dictionary (action:, query|answer:) which tells the agent 
+whether its an answer ready to be given to the user or does it need to use a tool in order to get the answer.
+The tools made available through this code are:
+    1. search_papers: which simply fetches relevant chunks from the vectorstore according to the query, returns the top k chunks. First embeds the sentence into a vectorand then uses that 
+    vector to retrieve chunks.
+    2. get_paper_summary: Returns the pre generated summary of a paper already listed in the chromaDB
+    3. list_papers: Returns the list of all papers in the database
+    4.web_search: searches the arxiv database through its api to find research papers that arent in the local corpus. Returns only the title, abstract and the link to open the paper.
+    

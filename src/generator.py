@@ -183,3 +183,19 @@ def generate_answer(system_prompt: str, user_prompt: str) -> str:
         temperature=0.7,
         json_mode=False,
     )
+
+
+def generate_agent_decision(system_prompt: str, user_prompt: str) -> str:
+    """
+    Generate one structured decision for the ReAct agent.
+
+    The agent prompt must instruct Groq to return either a tool action or a
+    final answer as JSON. The raw JSON text is returned so agent.py owns
+    parsing, validation, retries, and tool dispatch.
+    """
+    return _call_groq(
+        prompt=user_prompt,
+        system=system_prompt,
+        temperature=0,
+        json_mode=True,
+    )
