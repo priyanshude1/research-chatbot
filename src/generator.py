@@ -166,12 +166,27 @@ def _call_llm(
             response_format={"type": "json_object"} if json_mode else None,
             max_tokens=max_tokens,
         )
+        content = completion.choices[0].message.content
     except Exception as e:
         raise RuntimeError(
             f"LLM request failed (provider '{LLM_PROVIDER}', model '{_MODEL_NAME}'): {e}"
         ) from e
 
-    return completion.choices[0].message.content.strip()
+    if content is None:
+        # Some models/providers return a null content field instead of text
+        # (seen with cohere/north-mini-code:free on OpenRouter) — e.g. a
+        # tool-call-only response, a content filter, or a provider quirk.
+        # Treat it the same as any other failed generation rather than
+        # leaking a raw AttributeError from .strip() on None: every caller
+        # already knows how to handle RuntimeError (agent.py retries it,
+        # decompose_query() falls back), so raising here keeps that
+        # handling uniform instead of adding a new failure shape callers
+        # don't expect.
+        raise RuntimeError(
+            f"LLM returned empty content (provider '{LLM_PROVIDER}', model '{_MODEL_NAME}')"
+        )
+
+    return content.strip()
 
 
 def decompose_query(question: str) -> list[str]:
@@ -334,6 +349,23 @@ def generate_agent_decision(system_prompt: str, user_prompt: str) -> str:
         temperature=0,
         json_mode=True,
     )
+
+
+def get_active_provider_info() -> dict:
+    """
+    Report which provider/model the ReAct agent is currently configured to use.
+
+    Backs GET /health so the frontend can display the real, live provider
+    and model instead of a hardcoded string — necessary now that
+    LLM_PROVIDER is configurable at runtime via .env (see "LLM Provider
+    Modularity" in CLAUDE.md): a UI string baked in at write time would go
+    stale the moment someone switches providers without touching the
+    frontend.
+
+    Returns:
+        {"provider": str, "model": str}
+    """
+    return {"provider": LLM_PROVIDER, "model": _MODEL_NAME}
 
 
 def check_llm_reachable(timeout: float = 5.0) -> bool:

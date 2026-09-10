@@ -434,7 +434,7 @@
                         <li>Remembers the last 8 turns of this chat</li>
                     </ul>
                     <ul class="lib-list" id="libraryList"></ul>
-                    <div class="side-foot">Model: <strong>gpt-oss-120b</strong> via Groq<br>Session resets on refresh</div>
+                    <div class="side-foot">Model: <strong id="modelInfo">checking...</strong><br>Session resets on refresh</div>
                 </aside>
             </section>
         </main>
@@ -450,6 +450,7 @@
         const sourceFilter = document.getElementById('sourceFilter');
         const askButton = document.getElementById('askButton');
         const paperCount = document.getElementById('paperCount');
+        const modelInfo = document.getElementById('modelInfo');
         const libraryList = document.getElementById('libraryList');
         const statusDot = document.getElementById('statusDot');
         const statusText = document.getElementById('statusText');
@@ -553,8 +554,14 @@
                 const data = await response.json();
                 const ready = data.llm && data.chromadb;
                 setStatus(ready, ready ? 'system ready' : 'needs attention');
+                if (data.llm_provider && data.llm_model) {
+                    modelInfo.textContent = `${data.llm_model} (${data.llm_provider})`;
+                } else {
+                    modelInfo.textContent = 'unknown';
+                }
             } catch (error) {
                 setStatus(false, 'api unavailable');
+                modelInfo.textContent = 'unavailable';
             }
         }
 

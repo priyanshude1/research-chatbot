@@ -110,6 +110,8 @@ class HealthResponse(BaseModel):
     status: str
     llm: bool
     chromadb: bool
+    llm_provider: str
+    llm_model: str
 
 
 class SessionClearResponse(BaseModel):
@@ -247,6 +249,12 @@ def health():
     (lazy-connects on first use) and reading its count. Either check
     failing is reported, not raised — /health should always return 200
     with the status inside the body.
+
+    Also reports llm_provider/llm_model (generator.get_active_provider_info())
+    so the frontend can display which provider/model actually answered
+    instead of a string hardcoded at write time — provider switching
+    happens via .env + a restart, not through this API, so the UI has no
+    other way to know it changed.
     """
     try:
         vectorstore.get_total_chunks()
@@ -254,8 +262,12 @@ def health():
     except Exception:
         chromadb_ok = False
 
+    provider_info = generator.get_active_provider_info()
+
     return {
         "status": "ok",
         "llm": generator.check_llm_reachable(),
         "chromadb": chromadb_ok,
+        "llm_provider": provider_info["provider"],
+        "llm_model": provider_info["model"],
     }

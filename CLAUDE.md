@@ -238,7 +238,7 @@ CEREBRAS_MODEL=llama-3.3-70b
 
 # OpenRouter (alternative provider — set LLM_PROVIDER=openrouter to use)
 OPENROUTER_API_KEY=
-OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct:free
+OPENROUTER_MODEL=nex-agi/nex-n2.5-pro:free
 
 # Embedding (unchanged)
 EMBEDDING_MODEL=all-MiniLM-L6-v2
@@ -278,8 +278,11 @@ DELETE /session/{session_id}
     returns: { "cleared": bool }    <- clears conversation memory for that session
 
 GET  /health
-    returns: { "status": str, "llm": bool, "chromadb": bool }
-    <- "llm" reflects whichever provider LLM_PROVIDER currently selects, not Groq specifically
+    returns: { "status": str, "llm": bool, "chromadb": bool, "llm_provider": str, "llm_model": str }
+    <- "llm" reflects whichever provider LLM_PROVIDER currently selects, not Groq specifically.
+       llm_provider/llm_model let the frontend display which one is actually
+       active instead of a string hardcoded at write time (provider switching
+       is .env + a restart, not an API call, so the UI has no other way to know).
 ```
 
 Note: `/query` now takes a `session_id` so the server can maintain separate memory per browser session. Frontend generates a UUID on page load and passes it with every request.
