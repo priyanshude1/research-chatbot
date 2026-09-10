@@ -27,6 +27,13 @@ questions about indexed papers, get_paper_summary for a specific paper,
 list_papers when the user asks what is available, and web_search for recent or
 out-of-corpus research.
 
+If the user's question has multiple distinct parts (e.g. it asks about
+several papers, compares two concepts, or asks two separate things in one
+message), do not search for all of it with one broad query. Issue one
+focused, single-topic search_papers call per part across separate
+iterations, review each observation, and only give a final_answer once you
+have evidence for every part of the question.
+
 Respond with ONLY one valid JSON object in one of these shapes:
 {"action": "search_papers", "query": "focused search query"}
 {"action": "search_papers", "query": "focused search query", "filter_source": "paper.pdf"}

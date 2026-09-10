@@ -143,4 +143,18 @@ The tools made available through this code are:
     2. get_paper_summary: Returns the pre generated summary of a paper already listed in the chromaDB
     3. list_papers: Returns the list of all papers in the database
     4.web_search: searches the arxiv database through its api to find research papers that arent in the local corpus. Returns only the title, abstract and the link to open the paper.
-    
+
+
+agent.py 
+This is the file that codes the agents behaviour and what it should do when called (it gets called when the user hits the a new prompt in the same chat). The following functions are necessary to facilitate it:
+    1. _build_prompt(): Gives a combined text prompt that includes the conersation history stored in the memory, along with the observations ie. the tool use history, chronological record of actions performed by the agent, and also the question that was asked by the user.
+        All of these sections are properly concatenated in a string with proper separations between history, observations and the question.
+    2. _parse_decision(): Just a json parser, which converts raw json like strings received from the LLM into actual dictionaries which can be used.
+    3. _request_decision(): The function which wraps the LLM call. It calls the LLM through the generator module function, giving in the _AGENT_SYSTEM_PROMPT along with the prompt built by the _build_prompt function
+        In return we get the decision which is usually a further tool call if the task isnt achieved or a final answer, in json format
+    4. _validate_action(): It verifies if the action taken by the LLM is actually a valid tool usage registered in the TOOLS
+    5. run_agent(): the main function that runs the ReAct loop of the agent, here it is step by step:
+        1. The big prompt is assembled by the function _build_prompt using the history and observations apart from the user's question
+        2. ReAct loops starts with current maximum tool usage being 5 iterations. The decision is requested using 3., if the decision is non existent, the raw text is returned. 
+            If the decision is valid and the action is also valid, the action is carried out by using the tools. Tool usage is recorded in the observations and the loop repeats until either the iterations are exhausted or final answer is reached.
+        3. Answer and question are recorded in the history as turns of the assistant and user respectively. 
