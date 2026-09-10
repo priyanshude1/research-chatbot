@@ -5,4 +5,4 @@ sentence-transformers
 pymupdf
 python-dotenv
 requests
-groq
+openai

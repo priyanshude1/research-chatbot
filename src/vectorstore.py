@@ -44,6 +44,8 @@ from typing import Optional
 import chromadb
 from chromadb.api.models.Collection import Collection
 
+import embedder
+
 
 _CHROMA_PATH = os.getenv("CHROMA_PATH", "./chroma_db")
 _COLLECTION_NAME = os.getenv("COLLECTION_NAME", "research_papers")
@@ -225,10 +227,23 @@ def query(
         Cosine distance (not similarity) is what ChromaDB returns — smaller
         values mean closer vectors. Deduplication across multiple sub-query
         results happens in retriever.py, not here.
+
+        Always excludes "type": "summary" chunks (added by add_summary() for
+        v2's get_paper_summary tool) — a pre-generated summary is a
+        different kind of content than the page-level chunks this function
+        searches over, and mixing it into ordinary similarity search results
+        would surface a whole-paper summary alongside specific passages.
+        Summaries are only ever fetched directly, by exact filename, via
+        get_summary().
     """
     collection = _get_collection()
 
-    where = {"source": source_filter} if source_filter else None
+    exclude_summaries = {"type": {"$ne": "summary"}}
+    where = (
+        {"$and": [exclude_summaries, {"source": source_filter}]}
+        if source_filter
+        else exclude_summaries
+    )
 
     results = collection.query(
         query_embeddings=[query_embedding],
@@ -309,6 +324,42 @@ def get_summary(filename: str) -> Optional[dict]:
         return None
 
     return {"source": filename, "text": results["documents"][0]}
+
+
+def add_summary(filename: str, summary_text: str, file_hash: str) -> None:
+    """
+    Store one paper's pre-generated summary as its own chunk.
+
+    Added for v2's index.py summary-generation step (CLAUDE.md: index.py
+    "generates and stores a pre-computed summary for each paper at indexing
+    time, stored as a special chunk with type: 'summary' metadata"). Kept
+    separate from add_chunks() rather than folded into it, since a summary
+    isn't a content chunk — it has no page or chunk_index, is embedded from
+    its own text rather than a slice of the paper, and get_summary() looks
+    it up by source+type rather than by similarity search. query() excludes
+    "type": "summary" chunks so this never surfaces in ordinary search
+    results.
+
+    Args:
+        filename:     source filename, e.g. "vaswani_2017.pdf"
+        summary_text: the generated summary (generator.generate_paper_summary)
+        file_hash:    MD5 hash of the source PDF, stored alongside the
+                      summary for consistency with content chunk metadata
+
+    Notes:
+        add() upserts by ID (f"{filename}_summary"), so re-summarizing the
+        same paper (e.g. after --force reindex) overwrites rather than
+        duplicates.
+    """
+    collection = _get_collection()
+    embedding = embedder.embed_text(summary_text)
+
+    collection.add(
+        ids=[f"{filename}_summary"],
+        embeddings=[embedding],
+        documents=[summary_text],
+        metadatas=[{"source": filename, "type": "summary", "file_hash": file_hash}],
+    )
 
 
 def get_total_chunks() -> int:

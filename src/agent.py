@@ -83,14 +83,39 @@ def _request_decision(
     history: str,
     observations: list[dict[str, Any]],
 ) -> tuple[dict[str, Any] | None, str]:
-    """Request a decision, retry malformed JSON twice, then return raw text."""
+    """
+    Request a decision, retry malformed JSON or a failed generation call
+    twice, then return raw text.
+
+    Two distinct failure modes share the same retry budget here:
+      - the call succeeds but the text isn't valid JSON (_parse_decision
+        returns None) — the model's fault, so the retry message tells it
+        to fix its output shape;
+      - generator.generate_agent_decision() itself raises RuntimeError.
+        This happens even in json_mode: Groq's own JSON-mode validator
+        intermittently rejects a generation server-side (observed ~1-in-3
+        with an empty failed_generation), which surfaces as a hard 400
+        before any text comes back to parse. Without catching this here,
+        a single transient Groq-side validation failure would crash the
+        entire agent run instead of being retried like any other bad
+        response.
+    """
     raw = ""
     retry_message = None
     for attempt in range(_MAX_JSON_ATTEMPTS):
-        raw = generator.generate_agent_decision(
-            _AGENT_SYSTEM_PROMPT,
-            _build_prompt(question, history, observations, retry_message),
-        )
+        try:
+            raw = generator.generate_agent_decision(
+                _AGENT_SYSTEM_PROMPT,
+                _build_prompt(question, history, observations, retry_message),
+            )
+        except RuntimeError:
+            raw = ""
+            retry_message = (
+                "Your previous response could not be generated. Retry with only "
+                "one JSON object matching the required action shapes."
+            )
+            continue
+
         decision = _parse_decision(raw)
         if decision is not None:
             return decision, raw

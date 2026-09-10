@@ -32,7 +32,7 @@ v2 is a multi-turn conversational agent with:
 
 | Component | Choice | Reason |
 |---|---|---|
-| LLM | Groq API — `openai/gpt-oss-120b` | OpenAI open-weight 120B model, fast hosted inference, no local GPU required |
+| LLM | Groq API — `openai/gpt-oss-120b` (default provider; swappable — see "LLM Provider Modularity" below) | OpenAI open-weight 120B model, fast hosted inference, no local GPU required |
 | Embedding model | sentence-transformers `all-MiniLM-L6-v2` | Same as v1, unchanged |
 | Vector database | ChromaDB (persistent, file-based) | Same as v1, unchanged |
 | Agent framework | Custom ReAct loop | Built from scratch — no LangChain/LangGraph |
@@ -42,6 +42,21 @@ v2 is a multi-turn conversational agent with:
 | Cloud deployment | Render free tier | Free, supports Docker, easy GitHub integration |
 | arXiv search | arXiv public API | Free, no API key needed |
 | Language | Python 3.10+ | Standard for ML ecosystem |
+
+---
+
+## LLM Provider Modularity
+
+*(v2.1 addition — post-launch, in response to hitting Groq's free-tier daily token cap during testing.)*
+
+Groq remains the default provider (`LLM_PROVIDER=groq`), but `src/generator.py` can talk to any OpenAI-compatible chat-completions endpoint. Groq, Cerebras, and OpenRouter are registered out of the box — all three expose an OpenAI-compatible `/chat/completions` endpoint, so a single `openai.OpenAI` client pointed at a different `base_url` + API key + model covers all of them. No per-provider SDK, no LangChain-style router — just a small dict (`generator._PROVIDERS`) mapping a provider name to its base URL and the env var names it reads for its key and model.
+
+To switch: set `LLM_PROVIDER` in `.env` to `groq`, `cerebras`, or `openrouter`, and set that provider's own `*_API_KEY` (and optionally `*_MODEL`) env var. No code change needed. To add a new provider, add one entry to `_PROVIDERS` in `src/generator.py` and document its env vars in `.env.example`.
+
+Caveats:
+- Non-Groq model IDs and free-tier terms drift more than Groq's pinned model — check the provider's docs/console if a default model stops being available.
+- `response_format={"type": "json_object"}` (used for decomposition and every ReAct decision) isn't equally reliable across every provider/model — that's a property of the chosen model, not something this transport layer can paper over.
+- `GET /health`'s `llm` field checks whichever provider is currently active (via `generator.check_llm_reachable()`), not Groq specifically.
 
 ---
 
@@ -209,9 +224,21 @@ research-chatbot/                   <- same repo, v2-agentic branch
 ## Environment Variables
 
 ```
-# Groq (replaces Ollama)
+# LLM provider selector — one of the keys in generator.py's _PROVIDERS
+# registry (groq, cerebras, openrouter). See "LLM Provider Modularity" above.
+LLM_PROVIDER=groq
+
+# Groq (default provider; replaces Ollama from v1)
 GROQ_API_KEY=your_groq_api_key_here
 GROQ_MODEL=openai/gpt-oss-120b
+
+# Cerebras (alternative provider — set LLM_PROVIDER=cerebras to use)
+CEREBRAS_API_KEY=
+CEREBRAS_MODEL=llama-3.3-70b
+
+# OpenRouter (alternative provider — set LLM_PROVIDER=openrouter to use)
+OPENROUTER_API_KEY=
+OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct:free
 
 # Embedding (unchanged)
 EMBEDDING_MODEL=all-MiniLM-L6-v2
@@ -251,7 +278,8 @@ DELETE /session/{session_id}
     returns: { "cleared": bool }    <- clears conversation memory for that session
 
 GET  /health
-    returns: { "status": str, "groq": bool, "chromadb": bool }
+    returns: { "status": str, "llm": bool, "chromadb": bool }
+    <- "llm" reflects whichever provider LLM_PROVIDER currently selects, not Groq specifically
 ```
 
 Note: `/query` now takes a `session_id` so the server can maintain separate memory per browser session. Frontend generates a UUID on page load and passes it with every request.
@@ -262,9 +290,9 @@ Note: `/query` now takes a `session_id` so the server can maintain separate memo
 
 **Docker:**
 - Single container running FastAPI + ChromaDB
-- No GPU required — Groq handles all LLM inference remotely
+- No GPU required — the active LLM provider (Groq by default) handles all LLM inference remotely
 - ChromaDB mounted as a volume so index persists across container restarts
-- GROQ_API_KEY passed as environment variable at runtime (never baked into image)
+- LLM_PROVIDER plus that provider's API key passed as environment variables at runtime (never baked into image)
 
 **Render free tier:**
 - Connect GitHub repo, select v2-agentic branch
