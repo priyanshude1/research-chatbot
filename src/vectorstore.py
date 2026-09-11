@@ -40,6 +40,7 @@ Storage layout:
 """
 
 import os
+import threading
 from typing import Optional
 import chromadb
 from chromadb.api.models.Collection import Collection
@@ -57,6 +58,7 @@ _COLLECTION_NAME = os.getenv("COLLECTION_NAME", "research_papers")
 # ─────────────────────────────────────────────────────────────────────────────
 _client: chromadb.ClientAPI | None = None
 _collection: Collection | None = None
+_init_lock = threading.Lock()
 
 
 def _get_collection() -> Collection:
@@ -66,18 +68,27 @@ def _get_collection() -> Collection:
     get_or_create_collection() means this is safe to call whether the
     collection already exists on disk (subsequent runs) or not (first run).
 
+    FastAPI runs sync endpoints in a threadpool, so concurrent first-callers
+    can otherwise both see `_collection is None` and race into
+    chromadb.PersistentClient() for the same path at once — Chroma's own
+    client registry isn't safe against that (raises KeyError). The lock plus
+    re-check inside it (double-checked locking) ensures only one thread ever
+    constructs the client; every other caller just waits and reuses it.
+
     Returns:
         the ChromaDB Collection instance (cached after first call)
     """
     global _client, _collection
     if _collection is None:
-        print(f"Opening ChromaDB at: {_CHROMA_PATH}")
-        _client = chromadb.PersistentClient(path=_CHROMA_PATH)
-        _collection = _client.get_or_create_collection(
-            name=_COLLECTION_NAME,
-            metadata={"hnsw:space": "cosine"}  # explicit cosine similarity
-        )
-        print(f"Collection '{_COLLECTION_NAME}' ready. Existing chunks: {_collection.count()}")
+        with _init_lock:
+            if _collection is None:
+                print(f"Opening ChromaDB at: {_CHROMA_PATH}")
+                _client = chromadb.PersistentClient(path=_CHROMA_PATH)
+                _collection = _client.get_or_create_collection(
+                    name=_COLLECTION_NAME,
+                    metadata={"hnsw:space": "cosine"}  # explicit cosine similarity
+                )
+                print(f"Collection '{_COLLECTION_NAME}' ready. Existing chunks: {_collection.count()}")
     return _collection
 
 

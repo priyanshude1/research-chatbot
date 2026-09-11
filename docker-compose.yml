@@ -1,0 +1,43 @@
+services:
+  research-chatbot:
+    # Build the image from the Dockerfile in this directory, rather than
+    # pulling a pre-built image from a registry.
+    build: .
+
+    # host_port:container_port. The app listens on 8000 inside the
+    # container (Dockerfile's EXPOSE/CMD); this makes it reachable at
+    # localhost:8000 from Windows.
+    ports:
+      - "8000:8000"
+
+    # Loads every KEY=VALUE line from .env as an environment variable
+    # inside the container — this is how LLM_PROVIDER, GROQ_API_KEY, etc.
+    # reach generator.py's os.getenv() calls without ever being COPYed
+    # into the image itself (see .dockerignore).
+    env_file:
+      - .env
+
+    # Bind mounts: host_path:container_path. Unlike a plain COPY (baked
+    # into the image, frozen at build time), a volume is a live link to a
+    # folder on the Windows filesystem. Two different reasons to mount
+    # these two specifically:
+    volumes:
+      # chroma_db/ is the persistent vector index. Without this mount, it
+      # would exist only inside the container's writable layer — and that
+      # layer is destroyed every time the container is removed and
+      # recreated (docker compose down, or `docker compose up --build`),
+      # silently wiping the index and forcing a full re-index. Mounting it
+      # keeps the actual index data on the host, outliving any container.
+      - ./chroma_db:/app/chroma_db
+
+      # data/ holds the source PDFs. It's already baked into the image via
+      # COPY, but mounting it too means dropping a new PDF into ./data/ on
+      # Windows and re-running indexing doesn't require rebuilding the
+      # image — same "expand corpus anytime" workflow CLAUDE.md describes
+      # for local (non-Docker) use.
+      - ./data:/app/data
+
+    # Restart automatically if the process crashes, but not if you
+    # deliberately stop it (docker compose stop/down) — appropriate for a
+    # local/demo service you start and stop yourself.
+    restart: unless-stopped

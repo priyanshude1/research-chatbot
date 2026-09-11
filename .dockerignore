@@ -1,0 +1,25 @@
+# Windows-specific virtualenv — never valid inside the Linux image, and the
+# Dockerfile installs its own dependencies fresh via requirements.txt anyway.
+venv/
+
+# ChromaDB's on-disk index. This is mounted as a volume in docker-compose.yml
+# instead of being baked into the image, so re-building the image (e.g.
+# after a code change) never wipes or shadows an already-indexed corpus.
+chroma_db/
+
+__pycache__/
+**/__pycache__/
+*.pyc
+
+.git/
+.github/
+
+# Never bake secrets into an image layer — anyone who can pull/inspect the
+# image can read every layer's contents. Real values are injected at
+# container-run time via docker-compose.yml's env_file, not COPY.
+.env
+
+# Local docs unrelated to the running app.
+.env.example
+key_learnings.txt
+frontend/
