@@ -114,3 +114,47 @@ Process outline:
     9. The final API call is then made which contains the system prompt and the user prompt as parameters.
     10. The generated answer is the response text (in the json) made by the LLM
 
+
+main.py
+
+Exposes API endpoints which serve the frontend and communicates with the backend with API calls. All of these endpoints are used in the index.html
+where the buttons simply hit the API calls. Its simply a connector between pipeline.py and index.html
+
+
+
+V2-Agentic
+
+In the agentic version of the RAG chatbot, we are making a chat memory which allows us to ask multiple questions while keeping the previous prompts in context.
+This happens basically by storing the user prompts and responses from the assistant in turns (1 turn is 1 back and forth) in a double ended queue, with a capped 
+limit, crossing which the oldest message gets deleted from the window.
+
+memory.py
+This is what stores our content in the deque in dictionary where the content and its speaker is stored, in the session key.
+It also formats the history of the conversation such that it can be easily fed into the existing prompt when a new prompt is made,
+with proper line breaks and who said what, in string format.  
+
+
+tools.py
+They are functions that the agent can use to process the query. Their usage is dictated by the LLM as it sends the output in a dictionary (action:, query|answer:) which tells the agent 
+whether its an answer ready to be given to the user or does it need to use a tool in order to get the answer.
+The tools made available through this code are:
+    1. search_papers: which simply fetches relevant chunks from the vectorstore according to the query, returns the top k chunks. First embeds the sentence into a vectorand then uses that 
+    vector to retrieve chunks.
+    2. get_paper_summary: Returns the pre generated summary of a paper already listed in the chromaDB
+    3. list_papers: Returns the list of all papers in the database
+    4.web_search: searches the arxiv database through its api to find research papers that arent in the local corpus. Returns only the title, abstract and the link to open the paper.
+
+
+agent.py 
+This is the file that codes the agents behaviour and what it should do when called (it gets called when the user hits the a new prompt in the same chat). The following functions are necessary to facilitate it:
+    1. _build_prompt(): Gives a combined text prompt that includes the conersation history stored in the memory, along with the observations ie. the tool use history, chronological record of actions performed by the agent, and also the question that was asked by the user.
+        All of these sections are properly concatenated in a string with proper separations between history, observations and the question.
+    2. _parse_decision(): Just a json parser, which converts raw json like strings received from the LLM into actual dictionaries which can be used.
+    3. _request_decision(): The function which wraps the LLM call. It calls the LLM through the generator module function, giving in the _AGENT_SYSTEM_PROMPT along with the prompt built by the _build_prompt function
+        In return we get the decision which is usually a further tool call if the task isnt achieved or a final answer, in json format
+    4. _validate_action(): It verifies if the action taken by the LLM is actually a valid tool usage registered in the TOOLS
+    5. run_agent(): the main function that runs the ReAct loop of the agent, here it is step by step:
+        1. The big prompt is assembled by the function _build_prompt using the history and observations apart from the user's question
+        2. ReAct loops starts with current maximum tool usage being 5 iterations. The decision is requested using 3., if the decision is non existent, the raw text is returned. 
+            If the decision is valid and the action is also valid, the action is carried out by using the tools. Tool usage is recorded in the observations and the loop repeats until either the iterations are exhausted or final answer is reached.
+        3. Answer and question are recorded in the history as turns of the assistant and user respectively. 

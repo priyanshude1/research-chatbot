@@ -7,7 +7,7 @@ Responsibility:
     These vectors are what gets stored in ChromaDB and compared at query time.
 
 Why a separate embedding model and not the LLM?
-    The LLM (Llama 3.2 3B) is a generative model — it produces text.
+    The LLM (OpenAI GPT-OSS 120B via Groq) is a generative model — it produces text.
     Embedding requires a different kind of model: one trained specifically
     to map text into a vector space where semantic similarity = geometric proximity.
     Sentence-transformers models are fine-tuned on datasets of similar/dissimilar

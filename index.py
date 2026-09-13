@@ -14,9 +14,19 @@ Responsibility:
     means dropping new papers into ./data and rerunning this script only
     does the work the new papers actually require.
 
+    v2 addition: for each newly-indexed PDF, also generates a whole-paper
+    summary (generator.generate_paper_summary) from its full extracted
+    text and stores it as its own "type": "summary" chunk
+    (vectorstore.add_summary), backing the get_paper_summary agent tool.
+    A summary generation failure is logged and skipped rather than failing
+    the whole run — the paper's content chunks are still indexed and
+    usable for search either way.
+
 Usage:
-    python index.py            # incremental — skip files already indexed
-    python index.py --force    # wipe the collection, reindex everything
+    python index.py                # incremental — skip files already indexed
+    python index.py --force        # wipe the collection, reindex everything
+    python index.py --summaries-only  # backfill missing summaries only,
+                                       # no re-chunking/re-embedding
 """
 
 import argparse
@@ -30,10 +40,69 @@ load_dotenv()
 
 import chunker
 import embedder
+import generator
 import vectorstore
 
 
 _DATA_PATH = os.getenv("DATA_PATH", "./data")
+
+
+def _generate_and_store_summary(filename: str, pdf_path: str, file_hash: str) -> bool:
+    """
+    Generate and store one paper's summary, logging and swallowing a
+    RuntimeError rather than raising — shared by run_indexing() (summary
+    right after a paper is freshly indexed) and backfill_summaries()
+    (summary for a paper indexed earlier whose summary attempt failed).
+
+    Returns:
+        True if the summary was generated and stored, False if it failed.
+    """
+    print(f"  Generating summary for {filename}...")
+    pages = chunker.extract_text_by_page(pdf_path)
+    full_text = "\n".join(page["text"] for page in pages)
+    try:
+        summary = generator.generate_paper_summary(filename, full_text)
+        vectorstore.add_summary(filename, summary, file_hash)
+        print("  -> summary stored")
+        return True
+    except RuntimeError as e:
+        print(f"  Summary generation failed ({e}) — continuing without one.")
+        return False
+
+
+def backfill_summaries() -> dict:
+    """
+    Generate summaries for already-indexed papers that don't have one yet.
+
+    Does not touch content chunks or re-embed anything — for use after
+    run_indexing()'s summary step failed for some/all papers (e.g. Groq
+    was unreachable at index time) without redoing the expensive
+    chunk/embed/store work that already succeeded.
+
+    Returns:
+        {"generated": list[str], "failed": list[str]}
+    """
+    generated: list[str] = []
+    failed: list[str] = []
+
+    for filename in vectorstore.get_all_sources():
+        if vectorstore.get_summary(filename) is not None:
+            continue
+
+        pdf_path = os.path.join(_DATA_PATH, filename)
+        if not os.path.exists(pdf_path):
+            print(f"Skipping {filename}: source PDF not found at {pdf_path}")
+            failed.append(filename)
+            continue
+
+        file_hash = chunker.compute_file_hash(pdf_path)
+        if _generate_and_store_summary(filename, pdf_path, file_hash):
+            generated.append(filename)
+        else:
+            failed.append(filename)
+
+    print(f"\nDone. Generated {len(generated)} summaries, {len(failed)} failed.")
+    return {"generated": generated, "failed": failed}
 
 
 def run_indexing(force_reindex: bool = False) -> dict:
@@ -84,6 +153,8 @@ def run_indexing(force_reindex: bool = False) -> dict:
         added = vectorstore.add_chunks(embedded_chunks)
         print(f"  -> {added} chunks stored")
 
+        _generate_and_store_summary(filename, pdf_path, file_hash)
+
         indexed.append(filename)
         already_indexed.add(file_hash)
 
@@ -101,6 +172,15 @@ if __name__ == "__main__":
         action="store_true",
         help="Wipe the existing collection and reindex every PDF in DATA_PATH from scratch.",
     )
+    parser.add_argument(
+        "--summaries-only",
+        action="store_true",
+        help="Backfill summaries for already-indexed papers that don't have one yet, "
+             "without re-chunking or re-embedding content.",
+    )
     args = parser.parse_args()
 
-    run_indexing(force_reindex=args.force)
+    if args.summaries_only:
+        backfill_summaries()
+    else:
+        run_indexing(force_reindex=args.force)
