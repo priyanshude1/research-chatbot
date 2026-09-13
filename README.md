@@ -85,6 +85,12 @@ research-chatbot/
 └── requirements.txt
 ```
 
+## Prerequisites
+
+- Python 3.10+ (for running locally without Docker)
+- An API key for at least one registered LLM provider — Groq's free tier is the default and easiest to start with
+- For the Docker path: Docker Desktop, which on Windows requires virtualization enabled in BIOS/UEFI *and* the WSL2 Windows feature enabled. If `docker` isn't recognized or Docker Desktop reports virtualization not detected, see [Docker's WSL2 setup docs](https://docs.docker.com/desktop/wsl/) — this can require an admin-elevated `wsl --install` and a restart on machines where WSL was never set up before.
+
 ## Running locally
 
 ```bash
@@ -104,12 +110,21 @@ To add more papers later, drop PDFs into `./data/` and re-run `python index.py` 
 
 ## Running with Docker
 
+`.env` is gitignored and never shipped in the repo — `docker-compose.yml` loads it via `env_file: .env`, so it has to exist locally (with your own API key for at least one provider) before the container will start:
+
 ```bash
+cp .env.example .env         # then fill in at least one provider's API key
 docker compose build
-docker compose up
+docker compose up -d
 ```
 
-Open `http://localhost:8000`. `chroma_db/` and `data/` are bind-mounted (see `docker-compose.yml`), so the index persists across container restarts/rebuilds and new PDFs can be dropped in without rebuilding the image.
+`chroma_db/` is gitignored, so on a fresh clone it doesn't exist yet — the container will start with an empty corpus until you index once, from inside the running container, writing into the bind-mounted `chroma_db/` on your host:
+
+```bash
+docker compose exec research-chatbot python index.py
+```
+
+Open `http://localhost:8000`. `chroma_db/` and `data/` are bind-mounted (see `docker-compose.yml`), so the index persists across container restarts/rebuilds — this indexing step is only needed once, not on every `docker compose up`, and new PDFs can be dropped into `./data/` and re-indexed the same way without rebuilding the image.
 
 ## API
 
