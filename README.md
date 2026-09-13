@@ -104,7 +104,10 @@ To add more papers later, drop PDFs into `./data/` and re-run `python index.py` 
 
 ## Running with Docker
 
+`.env` is gitignored and never shipped in the repo — `docker-compose.yml` loads it via `env_file: .env`, so it has to exist locally (with your own API key for at least one provider) before the container will start:
+
 ```bash
+cp .env.example .env         # then fill in at least one provider's API key
 docker compose build
 docker compose up
 ```
